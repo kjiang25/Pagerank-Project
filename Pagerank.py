@@ -132,6 +132,10 @@ class WebGraph():
                 x0 = torch.unsqueeze(x0,1)
             x0 /= torch.norm(x0)
 
+            stochastic_rows = torch.sparse.sum(self.P,1).indices()
+            a = torch.ones([n,1])
+            a[stochastic_rows]= 0
+
             # main loop
             xprev = x0
             x = xprev.detach().clone()
@@ -144,6 +148,15 @@ class WebGraph():
                 # but you'll have to read the code above to figure out what variables should get passed to that function
                 # and what pre/post processing needs to be done to them
 
+                addend = (alpha * x.t() @ a + (1 - alpha)) * v.t()
+                x = torch.sparse.addmm(
+                    addend.t(),          
+                    self.P.t(), 
+                    x,             
+                    beta=1,
+                    alpha=alpha
+                )       
+                x /= torch.norm(x)
                 # output debug information
                 residual = torch.norm(x-xprev)
                 logging.debug(f'i={i} residual={residual}')
@@ -238,6 +251,12 @@ if __name__=='__main__':
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
+
+    g = WebGraph(args.data, filter_ratio=args.filter_ratio)
+    v = g.make_personalization_vector(args.personalization_vector_query)
+    pi = g.power_method(v, alpha=args.alpha, max_iterations=args.max_iterations, epsilon=args.epsilon)
+    g.search(pi, query=args.search_query, max_results=args.max_results)
+
 
     g = WebGraph(args.data, filter_ratio=args.filter_ratio)
     v = g.make_personalization_vector(args.personalization_vector_query)
